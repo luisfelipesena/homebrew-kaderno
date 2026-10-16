@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <title>Kaderno updates</title>
+    <item>
+      <title>Kaderno 2026.10.16</title>
+      <sparkle:version>289.15.20</sparkle:version>
+      <sparkle:shortVersionString>2026.10.16</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261016T152000Z-hf.0/Kaderno-20261016T152000Z-hf.0.dmg" length="9093952" type="application/octet-stream" sparkle:edSignature="oYPa093XNsqnSdB1y2XFzoSYUXyjDHI1axliC2RPcDONDWqvUR81fq9C5zwcOLmjxtYor4pMur3HsKEIVUOPCQ==" />
+    </item>
+  </channel>
+</rss>

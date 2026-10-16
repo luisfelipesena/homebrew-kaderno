@@ -6,7 +6,7 @@ The application source remains in its private development repository. This repos
 
 ## Installation
 
-Once a release is published:
+Requires Apple silicon and macOS 15 or later:
 
 ```sh
 brew install --cask luisfelipesena/kaderno/kaderno
