@@ -3,12 +3,11 @@
   <channel>
     <title>Kaderno updates</title>
     <item>
-      <title>Kaderno 2026.10.17</title>
-      <sparkle:version>290.17.44</sparkle:version>
-      <sparkle:shortVersionString>2026.10.17</sparkle:shortVersionString>
+      <title>Kaderno 2026.10.18</title>
+      <sparkle:version>291.0.42</sparkle:version>
+      <sparkle:shortVersionString>2026.10.18</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:criticalUpdate />
-      <enclosure url="https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261017T174400Z-hf.3/Kaderno-20261017T174400Z-hf.3.dmg" length="9787836" type="application/octet-stream" sparkle:edSignature="v9AsLxvbUHC82U3uwtCAZmDB3I/1JEN389u2qxnwY577oTlXpe8Pk01r6onpf6INBrHlPZDev3ewGGdptzJlAg==" />
+      <enclosure url="https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261018T004200Z-hf.0/Kaderno-20261018T004200Z-hf.0.dmg" length="10353014" type="application/octet-stream" sparkle:edSignature="abpQFYkroQEYt8jxglEdkTyDGzvrKO139WMiQHmexMLHFbJugLvHUp0xtRmIUEGCC/VYV6kefkPRkql7E6BGCg==" />
     </item>
   </channel>
 </rss>
