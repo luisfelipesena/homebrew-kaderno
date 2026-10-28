@@ -6,10 +6,16 @@ on:
         description: Draft release tag containing the Windows installer
         required: true
         type: string
+      build_source:
+        description: Build the minimum host source attached to this draft instead of running smoke
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   smoke:
+    if: ${{ !inputs.build_source }}
     runs-on: windows-latest
     timeout-minutes: 15
     env:
@@ -71,3 +77,90 @@ jobs:
             $result = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
             if ($result.ExitCode -ne 0) { throw 'Uninstall failed' }
           }
+  build:
+    if: inputs.build_source
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+    steps:
+      - name: Download draft-only host source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'A draft release is required' }
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern KadernoWindowsSource.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Source download failed' }
+          tar -xzf KadernoWindowsSource.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed' }
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install pinned Rust
+        shell: pwsh
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt --target x86_64-pc-windows-msvc
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/windows/src-tauri/target
+          key: public-windows-cargo-${{ hashFiles('apps/windows/src-tauri/Cargo.lock', 'apps/windows/rust-toolchain.toml') }}
+      - name: Formatting
+        shell: pwsh
+        working-directory: apps/windows
+        run: |
+          cargo +1.99.1 fmt --manifest-path src-tauri/Cargo.toml --check *> format.log
+          if ($LASTEXITCODE -ne 0) { throw 'Rust formatting failed. Source diffs are not printed.' }
+      - name: Clippy
+        shell: pwsh
+        working-directory: apps/windows
+        run: |
+          cargo +1.99.1 clippy --manifest-path src-tauri/Cargo.toml --release --all-targets --message-format=json -- -D warnings 1> diagnostics.jsonl 2> compile-progress.log
+          $code = $LASTEXITCODE
+          foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'diagnostics.jsonl'))) {
+            try { $item = $line | ConvertFrom-Json } catch { continue }
+            if ($item.reason -eq 'compiler-message') {
+              $message = $item.message
+              $span = $message.spans | Where-Object is_primary | Select-Object -First 1
+              Write-Output "$($message.level): $($message.message) [$($span.file_name):$($span.line_start)]"
+            }
+          }
+          if ($code -ne 0) { throw 'Clippy failed. Source spans and rendered diagnostics are not printed.' }
+      - name: Rust tests
+        shell: pwsh
+        working-directory: apps/windows
+        run: |
+          cargo +1.99.1 test --manifest-path src-tauri/Cargo.toml --release --message-format=json 1> tests.log 2> tests-progress.log
+          $code = $LASTEXITCODE
+          foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tests.log'))) {
+            if ($line -match '^test [a-zA-Z0-9_:]+ \.\.\. (ok|FAILED)$' -or $line -match '^test result:') { Write-Output $line }
+          }
+          if ($code -ne 0) { throw 'Rust tests failed. Source output is not printed.' }
+      - name: Build signed per-user installer
+        shell: pwsh
+        working-directory: apps/windows
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          bunx @tauri-apps/cli@2.12.4 build --target x86_64-pc-windows-msvc --config release/tauri.release.json *> tauri-build.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tauri-build.log'))) {
+              if ($line -match '^\s*(error(\[[A-Z0-9]+\])?:|Error|failed|Caused by:)') { Write-Output $line }
+            }
+            throw 'Installer build failed. Source output is not printed.'
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            apps/windows/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            apps/windows/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig
+            apps/windows/release/release.json
+          if-no-files-found: error
