@@ -1,0 +1,73 @@
+name: Windows installer smoke
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release tag containing the Windows installer
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Require a draft and download its installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'A draft release is required' }
+          New-Item -ItemType Directory -Path evidence,installer | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*_x64-setup.exe' --dir installer
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+      - name: Install per user and smoke the remote web host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = @(Get-ChildItem installer -Filter '*-setup.exe')
+          if ($installer.Count -ne 1) { throw 'Expected one installer' }
+          $install = Start-Process $installer[0].FullName -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $candidates = @("$env:LOCALAPPDATA\Kaderno\Kaderno.exe", "$env:LOCALAPPDATA\Programs\Kaderno\Kaderno.exe")
+          $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (!$exe) { throw 'Per-user executable not found' }
+          $report = Join-Path $PWD 'evidence\report.json'
+          $app = Start-Process $exe -ArgumentList @('--smoke', "`"$report`"") -PassThru
+          $deadline = (Get-Date).AddMinutes(3)
+          while (!(Test-Path $report) -and !$app.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.CopyFromScreen($bounds.Left,$bounds.Top,0,0,$bounds.Size)
+          $bitmap.Save((Join-Path $PWD 'evidence\screenshot.png'))
+          $graphics.Dispose()
+          $bitmap.Dispose()
+          if (!$app.WaitForExit(20000)) { Stop-Process -Id $app.Id; throw 'Smoke process timed out' }
+          if (!(Test-Path $report)) { throw 'Smoke report missing' }
+          $result = Get-Content $report -Raw | ConvertFrom-Json
+          Get-Content $report -Raw
+          if (!$result.ok -or $app.ExitCode -ne 0) { throw 'Smoke checks failed' }
+      - name: Upload report and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke
+          path: evidence/
+          if-no-files-found: error
+      - name: Uninstall
+        if: always()
+        shell: pwsh
+        run: |
+          $paths = @("$env:LOCALAPPDATA\Kaderno\uninstall.exe", "$env:LOCALAPPDATA\Programs\Kaderno\uninstall.exe")
+          $uninstaller = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($uninstaller) {
+            $result = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
+            if ($result.ExitCode -ne 0) { throw 'Uninstall failed' }
+          }
