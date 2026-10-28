@@ -149,6 +149,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          if (Test-Path src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis) { Remove-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -Recurse -Force }
           bunx @tauri-apps/cli@2.12.4 build --target x86_64-pc-windows-msvc --config release/tauri.release.json *> tauri-build.log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
