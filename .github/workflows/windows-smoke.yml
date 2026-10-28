@@ -12,7 +12,8 @@ on:
         type: boolean
         default: false
 permissions:
-  contents: read
+  # GitHub requires push access even to read draft releases.
+  contents: write
 jobs:
   smoke:
     if: ${{ !inputs.build_source }}
