@@ -9,7 +9,7 @@ on:
         required: true
         type: string
 permissions:
-  contents: read
+  contents: write
 jobs:
   broker:
     runs-on: windows-latest
