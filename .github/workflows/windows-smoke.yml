@@ -57,12 +57,14 @@ jobs:
           $exe = "$PWD/bundle/apps/windows/src-tauri/target/debug/Kaderno.exe"
           # cargo build leaves resources beside the executable for a diagnostic run.
           Copy-Item evidence/native "$PWD/bundle/apps/windows/src-tauri/target/debug/native" -Recurse -Force
-          $report = "$PWD/evidence/webview2-proof.json"
-          $process = Start-Process $exe -ArgumentList @('--private-workspace','--private-proof', $report) -PassThru
-          if (!$process.WaitForExit(90000)) { Stop-Process -Id $process.Id; throw 'WebView2 boot timed out' }
-          if ($process.ExitCode -ne 0 -or !(Test-Path $report)) { throw 'WebView2 proof failed' }
-          $proof = Get-Content $report -Raw | ConvertFrom-Json
-          if (!$proof.ok) { throw 'WebView2 reported failure' }
+          foreach ($boot in @(1,2)) {
+            $report = "$PWD/evidence/webview2-proof-$boot.json"
+            $process = Start-Process $exe -ArgumentList @('--private-workspace','--private-proof', $report) -PassThru
+            if (!$process.WaitForExit(90000)) { Stop-Process -Id $process.Id; throw 'WebView2 boot timed out' }
+            if ($process.ExitCode -ne 0 -or !(Test-Path $report)) { throw 'WebView2 proof failed' }
+            $proof = Get-Content $report -Raw | ConvertFrom-Json
+            if (!$proof.ok -or !$proof.editorPersisted -or ($boot -eq 2 -and !$proof.persistedBeforeBoot)) { throw 'WebView2 persistence proof failed' }
+          }
           $artifact = "$PWD/evidence/KadernoWindowsDiagnostic.zip"
           Compress-Archive -Path $exe,"$PWD/bundle/apps/windows/src-tauri/target/debug/native" -DestinationPath $artifact
           Get-FileHash $artifact -Algorithm SHA256 | ConvertTo-Json > evidence/tauri-artifact.json
