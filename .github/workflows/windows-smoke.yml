@@ -1,21 +1,19 @@
-name: Windows private platform proof
+name: Windows broker proof
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Draft containing only the protected helper test sources
         required: true
         type: string
       source_sha256:
-        description: Expected SHA256 of WindowsPrivatePlatform.tar.gz
         required: true
         type: string
 permissions:
-  contents: write
+  contents: read
 jobs:
-  native:
+  broker:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       TEST_TAG: ${{ inputs.tag }}
@@ -23,30 +21,36 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
     steps:
-      - name: Download verified draft source
+      - name: Download private draft candidate
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $release = gh release view $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'Test source must remain a draft' }
-          gh release download $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern WindowsPrivatePlatform.tar.gz
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'Draft required' }
+          gh release download $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern WindowsBrokerProof.tar.gz
           if ($LASTEXITCODE -ne 0) { throw 'Download failed' }
-          $actual = (Get-FileHash WindowsPrivatePlatform.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $env:SOURCE_SHA256) { throw 'Source digest mismatch' }
-          tar -xzf WindowsPrivatePlatform.tar.gz
-          if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed' }
-      - name: Run Windows synthetic checks
+          if ((Get-FileHash WindowsBrokerProof.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:SOURCE_SHA256) { throw 'Digest mismatch' }
+          tar -xzf WindowsBrokerProof.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }
+      - name: Run native helper and actual broker
         shell: pwsh
         run: |
           pwsh -File scripts/windows-release/check-private.ps1 -Output "$PWD/evidence"
-          if ($LASTEXITCODE -ne 0) { throw 'Native Windows checks failed' }
-      - name: Retain native evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Native checks failed' }
+          $manifest = Get-Content candidate/broker-source.json -Raw | ConvertFrom-Json
+          foreach ($name in @('kaderno-local.exe', 'broker-proof.exe')) {
+            if ((Get-FileHash "candidate/$name" -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.artifacts.$name) { throw 'Binary digest mismatch' }
+            Copy-Item "candidate/$name" evidence/native/
+          }
+          Copy-Item candidate/broker-source.json evidence/
+          & ./evidence/native/broker-proof.exe > evidence/broker-proof.json
+          if ($LASTEXITCODE -ne 0) { throw 'Broker proof failed' }
+      - name: Retain reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-private-platform-proof
+          name: windows-broker-proof
           path: |
-            evidence/protected-mesh.json
-            evidence/artifact.json
-            evidence/build.log
+            evidence/*.json
+            evidence/*.log
           if-no-files-found: error
