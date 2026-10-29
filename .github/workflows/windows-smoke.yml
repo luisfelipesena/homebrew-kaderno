@@ -13,7 +13,7 @@ permissions:
 jobs:
   broker:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       TEST_TAG: ${{ inputs.tag }}
@@ -45,6 +45,24 @@ jobs:
           Copy-Item candidate/broker-source.json evidence/
           & ./evidence/native/broker-proof.exe > evidence/broker-proof.json
           if ($LASTEXITCODE -ne 0) { throw 'Broker proof failed' }
+      - name: Build and boot bundled WebView2 diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item evidence/native/* bundle/apps/windows/src-tauri/native/ -Recurse -Force
+          Push-Location bundle/apps/windows
+          cargo build --manifest-path src-tauri/Cargo.toml --locked *> "$env:GITHUB_WORKSPACE/evidence/tauri-build.log"
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
+          Pop-Location
+          $exe = "$PWD/bundle/apps/windows/src-tauri/target/debug/Kaderno.exe"
+          # cargo build leaves resources beside the executable for a diagnostic run.
+          Copy-Item evidence/native "$PWD/bundle/apps/windows/src-tauri/target/debug/native" -Recurse -Force
+          $report = "$PWD/evidence/webview2-proof.json"
+          $process = Start-Process $exe -ArgumentList @('--private-workspace','--private-proof', $report) -PassThru
+          if (!$process.WaitForExit(90000)) { Stop-Process -Id $process.Id; throw 'WebView2 boot timed out' }
+          if ($process.ExitCode -ne 0 -or !(Test-Path $report)) { throw 'WebView2 proof failed' }
+          $proof = Get-Content $report -Raw | ConvertFrom-Json
+          if (!$proof.ok) { throw 'WebView2 reported failure' }
       - name: Retain reports
         if: always()
         uses: actions/upload-artifact@v4
