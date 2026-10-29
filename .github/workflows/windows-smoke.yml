@@ -1,168 +1,52 @@
-name: Windows installer smoke
+name: Windows private platform proof
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Draft release tag containing the Windows installer
+        description: Draft containing only the protected helper test sources
         required: true
         type: string
-      build_source:
-        description: Build the minimum host source attached to this draft instead of running smoke
-        required: false
-        type: boolean
-        default: false
+      source_sha256:
+        description: Expected SHA256 of WindowsPrivatePlatform.tar.gz
+        required: true
+        type: string
 permissions:
-  # GitHub requires push access even to read draft releases.
   contents: write
 jobs:
-  smoke:
-    if: ${{ !inputs.build_source }}
+  native:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag }}
+      TEST_TAG: ${{ inputs.tag }}
+      SOURCE_SHA256: ${{ inputs.source_sha256 }}
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
     steps:
-      - name: Require a draft and download its installer
+      - name: Download verified draft source
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'A draft release is required' }
-          New-Item -ItemType Directory -Path evidence,installer | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*_x64-setup.exe' --dir installer
-          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
-      - name: Install per user and smoke the remote web host
+          $release = gh release view $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'Test source must remain a draft' }
+          gh release download $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern WindowsPrivatePlatform.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Download failed' }
+          $actual = (Get-FileHash WindowsPrivatePlatform.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:SOURCE_SHA256) { throw 'Source digest mismatch' }
+          tar -xzf WindowsPrivatePlatform.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed' }
+      - name: Run Windows synthetic checks
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $installer = @(Get-ChildItem installer -Filter '*-setup.exe')
-          if ($installer.Count -ne 1) { throw 'Expected one installer' }
-          $install = Start-Process $installer[0].FullName -ArgumentList '/S' -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
-          $candidates = @("$env:LOCALAPPDATA\Kaderno\Kaderno.exe", "$env:LOCALAPPDATA\Programs\Kaderno\Kaderno.exe")
-          $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (!$exe) { throw 'Per-user executable not found' }
-          $report = Join-Path $PWD 'evidence\report.json'
-          $app = Start-Process $exe -ArgumentList @('--smoke', "`"$report`"") -PassThru
-          $deadline = (Get-Date).AddMinutes(3)
-          while (!(Test-Path $report) -and !$app.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
-          Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName System.Drawing
-          $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
-          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
-          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-          $graphics.CopyFromScreen($bounds.Left,$bounds.Top,0,0,$bounds.Size)
-          $bitmap.Save((Join-Path $PWD 'evidence\screenshot.png'))
-          $graphics.Dispose()
-          $bitmap.Dispose()
-          if (!$app.WaitForExit(20000)) { Stop-Process -Id $app.Id; throw 'Smoke process timed out' }
-          if (!(Test-Path $report)) { throw 'Smoke report missing' }
-          $result = Get-Content $report -Raw | ConvertFrom-Json
-          Get-Content $report -Raw
-          if (!$result.ok -or $app.ExitCode -ne 0) { throw 'Smoke checks failed' }
-      - name: Upload report and screenshot
+          pwsh -File scripts/windows-release/check-private.ps1 -Output "$PWD/evidence"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows checks failed' }
+      - name: Retain native evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-smoke
-          path: evidence/
-          if-no-files-found: error
-      - name: Uninstall
-        if: always()
-        shell: pwsh
-        run: |
-          $paths = @("$env:LOCALAPPDATA\Kaderno\uninstall.exe", "$env:LOCALAPPDATA\Programs\Kaderno\uninstall.exe")
-          $uninstaller = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if ($uninstaller) {
-            $result = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
-            if ($result.ExitCode -ne 0) { throw 'Uninstall failed' }
-          }
-  build:
-    if: inputs.build_source
-    runs-on: windows-latest
-    timeout-minutes: 40
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag }}
-      CARGO_BUILD_JOBS: 2
-      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
-    steps:
-      - name: Download draft-only host source
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'A draft release is required' }
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern KadernoWindowsSource.tar.gz
-          if ($LASTEXITCODE -ne 0) { throw 'Source download failed' }
-          tar -xzf KadernoWindowsSource.tar.gz
-          if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed' }
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-      - name: Install pinned Rust
-        shell: pwsh
-        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt --target x86_64-pc-windows-msvc
-      - uses: actions/cache@v4
-        with:
+          name: windows-private-platform-proof
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            apps/windows/src-tauri/target
-          key: public-windows-cargo-${{ hashFiles('apps/windows/src-tauri/Cargo.lock', 'apps/windows/rust-toolchain.toml') }}
-      - name: Formatting
-        shell: pwsh
-        working-directory: apps/windows
-        run: |
-          cargo +1.99.1 fmt --manifest-path src-tauri/Cargo.toml --check *> format.log
-          if ($LASTEXITCODE -ne 0) { throw 'Rust formatting failed. Source diffs are not printed.' }
-      - name: Clippy
-        shell: pwsh
-        working-directory: apps/windows
-        run: |
-          cargo +1.99.1 clippy --manifest-path src-tauri/Cargo.toml --release --all-targets --message-format=json -- -D warnings 1> diagnostics.jsonl 2> compile-progress.log
-          $code = $LASTEXITCODE
-          foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'diagnostics.jsonl'))) {
-            try { $item = $line | ConvertFrom-Json } catch { continue }
-            if ($item.reason -eq 'compiler-message') {
-              $message = $item.message
-              $span = $message.spans | Where-Object is_primary | Select-Object -First 1
-              Write-Output "$($message.level): $($message.message) [$($span.file_name):$($span.line_start)]"
-            }
-          }
-          if ($code -ne 0) { throw 'Clippy failed. Source spans and rendered diagnostics are not printed.' }
-      - name: Rust tests
-        shell: pwsh
-        working-directory: apps/windows
-        run: |
-          cargo +1.99.1 test --manifest-path src-tauri/Cargo.toml --release --message-format=json 1> tests.log 2> tests-progress.log
-          $code = $LASTEXITCODE
-          foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tests.log'))) {
-            if ($line -match '^test [a-zA-Z0-9_:]+ \.\.\. (ok|FAILED)$' -or $line -match '^test result:') { Write-Output $line }
-          }
-          if ($code -ne 0) { throw 'Rust tests failed. Source output is not printed.' }
-      - name: Build signed per-user installer
-        shell: pwsh
-        working-directory: apps/windows
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          if (Test-Path src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis) { Remove-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -Recurse -Force }
-          bunx @tauri-apps/cli@2.12.4 build --target x86_64-pc-windows-msvc --config release/tauri.release.json *> tauri-build.log
-          $code = $LASTEXITCODE
-          if ($code -ne 0) {
-            foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tauri-build.log'))) {
-              if ($line -match '^\s*(error(\[[A-Z0-9]+\])?:|Error|failed|Caused by:)') { Write-Output $line }
-            }
-            throw 'Installer build failed. Source output is not printed.'
-          }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: |
-            apps/windows/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-            apps/windows/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig
-            apps/windows/release/release.json
+            evidence/protected-mesh.json
+            evidence/artifact.json
+            evidence/build.log
           if-no-files-found: error
