@@ -1,0 +1,11 @@
+{
+  "version": "301.22.36",
+  "notes": "Atualiza\u00e7\u00e3o do Kaderno para Windows.",
+  "pub_date": "2026-10-28T22:36:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/windows-20261028T223600Z-hf.0/Kaderno_301.22.36_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRc05PaTZvSDl4Nk9vclJ1V2pMUXdoUDBUemVwaEhNb0pVMGJReEZqd3h1QkZZK0k1Mmt5Y1M2T3Bpek90dzVsVFhJTzV0VTVwV2Rrbk82VXg5bW9aWStlclVScllRcHdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjI3MTQ0CWZpbGU6S2FkZXJub18zMDEuMjIuMzZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjMwMS4yMi4zNgpNU3Zsb3NuMndMN1NBb01hbDMwdDVGS0tsSndaY0dNSjN2cEZFQkl4Y2szT2d2Vlp1RnpoelpVb2I0ZEN2ODRFVmxmWjYxOXV0NW5SbTN0UGtGdkpBZz09Cg=="
+    }
+  }
+}
