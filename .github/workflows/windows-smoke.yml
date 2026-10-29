@@ -38,7 +38,7 @@ jobs:
           pwsh -File scripts/windows-release/check-private.ps1 -Output "$PWD/evidence"
           if ($LASTEXITCODE -ne 0) { throw 'Native checks failed' }
           $manifest = Get-Content candidate/broker-source.json -Raw | ConvertFrom-Json
-          foreach ($name in @('kaderno-local.exe', 'broker-proof.exe')) {
+          foreach ($name in @('kaderno-local.exe', 'broker-proof.exe', 'mesh-proof.exe')) {
             if ((Get-FileHash "candidate/$name" -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.artifacts.$name) { throw 'Binary digest mismatch' }
             Copy-Item "candidate/$name" evidence/native/
           }
@@ -49,14 +49,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Copy-Item evidence/native/* bundle/apps/windows/src-tauri/native/ -Recurse -Force
+          Copy-Item evidence/native/* bundle/apps/windows/src-tauri/native/ -Recurse -Force -Exclude 'broker-proof.exe','mesh-proof.exe'
           Push-Location bundle/apps/windows
           cargo build --manifest-path src-tauri/Cargo.toml --locked *> "$env:GITHUB_WORKSPACE/evidence/tauri-build.log"
           if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
           Pop-Location
           $exe = "$PWD/bundle/apps/windows/src-tauri/target/debug/Kaderno.exe"
           # cargo build leaves resources beside the executable for a diagnostic run.
-          Copy-Item evidence/native "$PWD/bundle/apps/windows/src-tauri/target/debug/native" -Recurse -Force
+          New-Item -ItemType Directory -Path "$PWD/bundle/apps/windows/src-tauri/target/debug/native" -Force | Out-Null
+          Copy-Item evidence/native/* "$PWD/bundle/apps/windows/src-tauri/target/debug/native/" -Recurse -Force -Exclude 'broker-proof.exe','mesh-proof.exe'
           foreach ($boot in @(1,2)) {
             $report = "$PWD/evidence/webview2-proof-$boot.json"
             $process = Start-Process $exe -ArgumentList @('--private-workspace','--private-proof', $report) -PassThru
@@ -67,11 +68,27 @@ jobs:
           }
           $artifact = "$PWD/evidence/KadernoWindowsDiagnostic.zip"
           Compress-Archive -Path $exe,"$PWD/bundle/apps/windows/src-tauri/target/debug/native" -DestinationPath $artifact
-          Get-FileHash $artifact -Algorithm SHA256 | ConvertTo-Json > evidence/tauri-artifact.json
+          @{ diagnostic=$true; release=$false; executableSha256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); archiveSha256=(Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant(); sourceSha256=$env:SOURCE_SHA256 } | ConvertTo-Json > evidence/tauri-artifact.json
           $release = gh release view $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'Draft custody changed' }
           gh release upload $env:TEST_TAG $artifact --repo $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'Diagnostic draft upload failed' }
+      - name: Pair synthetic owner and replica over verified TLS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tlsPath = Join-Path $env:LOCALAPPDATA ('Kaderno-TLS-proof-' + [guid]::NewGuid().ToString('N'))
+          try {
+            ./scripts/windows-release/prepare-mesh-tls.ps1 -Directory $tlsPath -Helper "$PWD/evidence/native/kaderno-mesh-keys.exe"
+            $env:KADERNO_PROOF_TLS_DIR = $tlsPath
+            $env:NODE_EXTRA_CA_CERTS = Join-Path $tlsPath 'ca.pem'
+            & ./evidence/native/mesh-proof.exe > evidence/mesh-proof.json
+            if ($LASTEXITCODE -ne 0) { throw 'Paired owner proof failed' }
+          } finally {
+            Remove-Item Env:KADERNO_PROOF_TLS_DIR -ErrorAction SilentlyContinue
+            Remove-Item Env:NODE_EXTRA_CA_CERTS -ErrorAction SilentlyContinue
+            if (Test-Path $tlsPath) { Remove-Item -LiteralPath $tlsPath -Recurse -Force }
+          }
       - name: Retain reports
         if: always()
         uses: actions/upload-artifact@v4
