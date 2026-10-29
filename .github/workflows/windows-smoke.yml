@@ -63,6 +63,13 @@ jobs:
           if ($process.ExitCode -ne 0 -or !(Test-Path $report)) { throw 'WebView2 proof failed' }
           $proof = Get-Content $report -Raw | ConvertFrom-Json
           if (!$proof.ok) { throw 'WebView2 reported failure' }
+          $artifact = "$PWD/evidence/KadernoWindowsDiagnostic.zip"
+          Compress-Archive -Path $exe,"$PWD/bundle/apps/windows/src-tauri/target/debug/native" -DestinationPath $artifact
+          Get-FileHash $artifact -Algorithm SHA256 | ConvertTo-Json > evidence/tauri-artifact.json
+          $release = gh release view $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'Draft custody changed' }
+          gh release upload $env:TEST_TAG $artifact --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic draft upload failed' }
       - name: Retain reports
         if: always()
         uses: actions/upload-artifact@v4
