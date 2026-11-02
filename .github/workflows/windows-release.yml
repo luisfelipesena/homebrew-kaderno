@@ -105,21 +105,8 @@ jobs:
           name: windows-installer
           path: installer/
           if-no-files-found: error
-      - name: Smoke a clean install against a synthetic owner
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label install
-      - name: Smoke an upgrade over the last published build
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --pattern '*_x64-setup.exe' --dir previous
-          if ($LASTEXITCODE -ne 0) { throw 'Previous installer download failed' }
-          $previous = (Get-ChildItem previous -Filter '*-setup.exe').FullName
-          if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:PREVIOUS_SHA256) { throw 'Previous installer digest mismatch' }
-          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label upgrade -Previous $previous
       - name: Pair synthetic owner and replica over verified TLS
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -136,6 +123,22 @@ jobs:
             Get-Process kaderno-local -ErrorAction SilentlyContinue | Stop-Process -Force
             if (Test-Path $tlsPath) { Remove-Item -LiteralPath $tlsPath -Recurse -Force }
           }
+      - name: Smoke a clean install against a synthetic owner
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label install
+      - name: Smoke an upgrade over the last published build
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --pattern '*_x64-setup.exe' --dir previous
+          if ($LASTEXITCODE -ne 0) { throw 'Previous installer download failed' }
+          $previous = (Get-ChildItem previous -Filter '*-setup.exe').FullName
+          if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:PREVIOUS_SHA256) { throw 'Previous installer digest mismatch' }
+          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label upgrade -Previous $previous
       - name: Retain reports
         if: always()
         uses: actions/upload-artifact@v4
