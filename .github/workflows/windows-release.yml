@@ -1,0 +1,149 @@
+name: Windows release
+# Builds the full private package from a draft, then smokes the installed binary against a synthetic owner,
+# clean and over the last published build. It never publishes: release.py --publish does that after review.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release holding KadernoWindowsPrivate.tar.gz
+        required: true
+        type: string
+      source_sha256:
+        description: Expected SHA256 of KadernoWindowsPrivate.tar.gz
+        required: true
+        type: string
+permissions:
+  # GitHub requires push access even to read draft releases.
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_SHA256: ${{ inputs.source_sha256 }}
+      PREVIOUS_TAG: windows-20261028T223600Z-hf.0
+      PREVIOUS_SHA256: 0ce803c6603dd0f38247614a1e1213c62b201f6b48eef05fd463ea363e73270f
+      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+    steps:
+      - name: Download the verified private draft
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.isDraft -or $release.isPrerelease) { throw 'A draft release is required' }
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern KadernoWindowsPrivate.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Download failed' }
+          if ((Get-FileHash KadernoWindowsPrivate.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:SOURCE_SHA256) { throw 'Digest mismatch' }
+          tar -xzf KadernoWindowsPrivate.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }
+          New-Item -ItemType Directory -Path evidence-out | Out-Null
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install pinned Rust
+        shell: pwsh
+        run: rustup toolchain install 1.99.1 --profile minimal --target x86_64-pc-windows-msvc
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bundle/apps/windows/src-tauri/target
+          key: private-windows-cargo-${{ hashFiles('bundle/apps/windows/src-tauri/Cargo.lock', 'bundle/apps/windows/rust-toolchain.toml') }}
+      - name: Build and test the native helper, then the real broker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -File scripts/windows-release/check-private.ps1 -Output "$PWD/evidence"
+          if ($LASTEXITCODE -ne 0) { throw 'Native checks failed' }
+          $manifest = Get-Content candidate/broker-source.json -Raw | ConvertFrom-Json
+          foreach ($name in @('kaderno-local.exe', 'broker-proof.exe', 'mesh-proof.exe', 'release-smoke.exe')) {
+            if ((Get-FileHash "candidate/$name" -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.artifacts.$name) { throw 'Binary digest mismatch' }
+            Copy-Item "candidate/$name" evidence/native/
+          }
+          & ./evidence/native/broker-proof.exe > evidence/broker-proof.json
+          if ($LASTEXITCODE -ne 0) { throw 'Broker proof failed' }
+      - name: Rust tests
+        shell: pwsh
+        working-directory: bundle/apps/windows
+        run: |
+          Copy-Item ../../../evidence/native/* src-tauri/native/ -Recurse -Force -Exclude 'broker-proof.exe','mesh-proof.exe','release-smoke.exe'
+          cargo +1.99.1 test --manifest-path src-tauri/Cargo.toml --release --message-format=json 1> tests.log 2> tests-progress.log
+          $code = $LASTEXITCODE
+          foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tests.log'))) {
+            if ($line -match '^test [a-zA-Z0-9_:]+ \.\.\. (ok|FAILED)$' -or $line -match '^test result:') { Write-Output $line }
+          }
+          if ($code -ne 0) { throw 'Rust tests failed. Source output is not printed.' }
+      - name: Build the updater-signed per-user installer
+        shell: pwsh
+        working-directory: bundle/apps/windows
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (Test-Path src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis) { Remove-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -Recurse -Force }
+          bunx @tauri-apps/cli@2.12.4 build --target x86_64-pc-windows-msvc --config release/tauri.release.json *> tauri-build.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            foreach ($line in [System.IO.File]::ReadLines((Join-Path $PWD 'tauri-build.log'))) {
+              if ($line -match '^\s*(error(\[[A-Z0-9]+\])?:|Error|failed|Caused by:)') { Write-Output $line }
+            }
+            throw 'Installer build failed. Source output is not printed.'
+          }
+          $release = Get-Content release/release.json -Raw | ConvertFrom-Json
+          $installer = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Kaderno_$($release.version)_x64-setup.exe"
+          if (!(Test-Path $installer) -or !(Test-Path "$installer.sig")) { throw 'Installer or updater signature missing' }
+          New-Item -ItemType Directory -Path ../../../installer | Out-Null
+          Copy-Item $installer,"$installer.sig",release/release.json ../../../installer/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: installer/
+          if-no-files-found: error
+      - name: Smoke a clean install against a synthetic owner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label install
+      - name: Smoke an upgrade over the last published build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --pattern '*_x64-setup.exe' --dir previous
+          if ($LASTEXITCODE -ne 0) { throw 'Previous installer download failed' }
+          $previous = (Get-ChildItem previous -Filter '*-setup.exe').FullName
+          if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:PREVIOUS_SHA256) { throw 'Previous installer digest mismatch' }
+          ./scripts/windows-release/release-ci.ps1 -Installer (Get-ChildItem installer -Filter '*-setup.exe').FullName -Label upgrade -Previous $previous
+      - name: Pair synthetic owner and replica over verified TLS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tlsPath = Join-Path $env:LOCALAPPDATA ('Kaderno-TLS-proof-' + [guid]::NewGuid().ToString('N'))
+          try {
+            ./scripts/windows-release/prepare-mesh-tls.ps1 -Directory $tlsPath -Helper "$PWD/evidence/native/kaderno-mesh-keys.exe"
+            $env:KADERNO_PROOF_TLS_DIR = $tlsPath
+            $env:NODE_EXTRA_CA_CERTS = Join-Path $tlsPath 'ca.pem'
+            & ./evidence/native/mesh-proof.exe > evidence/mesh-proof.json
+            if ($LASTEXITCODE -ne 0) { throw 'Paired owner proof failed' }
+          } finally {
+            Remove-Item Env:KADERNO_PROOF_TLS_DIR -ErrorAction SilentlyContinue
+            Remove-Item Env:NODE_EXTRA_CA_CERTS -ErrorAction SilentlyContinue
+            Get-Process kaderno-local -ErrorAction SilentlyContinue | Stop-Process -Force
+            if (Test-Path $tlsPath) { Remove-Item -LiteralPath $tlsPath -Recurse -Force }
+          }
+      - name: Retain reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-evidence
+          path: |
+            evidence/*.json
+            evidence/*.log
+            evidence-out/
+            bundle/apps/windows/tests.log
+          if-no-files-found: error
