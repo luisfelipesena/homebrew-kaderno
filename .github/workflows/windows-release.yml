@@ -23,8 +23,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
       SOURCE_SHA256: ${{ inputs.source_sha256 }}
-      PREVIOUS_TAG: windows-20261028T223600Z-hf.0
-      PREVIOUS_SHA256: 0ce803c6603dd0f38247614a1e1213c62b201f6b48eef05fd463ea363e73270f
+      PREVIOUS_TAG: windows-20261102T175200Z-hf.0
+      PREVIOUS_SHA256: f2abd1a4b5864de6de8349aaa3b1505fda75d00c16b36597b058adedd21c4050
       CARGO_BUILD_JOBS: 2
       CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
