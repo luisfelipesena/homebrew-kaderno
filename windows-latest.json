@@ -1,11 +1,11 @@
 {
-  "version": "306.17.52",
+  "version": "306.19.32",
   "notes": "Atualiza\u00e7\u00e3o do Kaderno para Windows.",
-  "pub_date": "2026-11-02T17:52:00Z",
+  "pub_date": "2026-11-02T19:32:00Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/windows-20261102T175200Z-hf.0/Kaderno_306.17.52_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRc05PaTZvSDl4NkpPQ25DT0lmQWZhTmttVHVTdGZWaWZ1b3Y0K290bXUrdGJialFpUG12RlpiN2RNNjJKM1dES2tuYWpGMkoxK1VLSDBEQ2lTZURwTzFFOWREcmZheVFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNjQyNzE3CWZpbGU6S2FkZXJub18zMDYuMTcuNTJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjMwNi4xNy41MgpNY1M4ZVNYQ0tYazM2czB0cUtBWkFGYnp6dE1URXJxRldZV29WUFhTTVA3UmwwdTZxU1BlUlB1S2NxZWdhRWMrczA1YkhNc2c0NkNXUnIwSXZJVFpEdz09Cg=="
+      "url": "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/windows-20261102T193200Z-hf.0/Kaderno_306.19.32_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRc05PaTZvSDl4Nk5BbEpBWmRYSzQwZU5nYVlZMERxeEIrb3JRbkdZZCtZY3padkRRUTlRdFdWU1BjYVRhZE9wVkIvNVRtazlnMDIvWTBPOVd6TFVUWnRrU3F4c2FmQXdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNjQ4NDA1CWZpbGU6S2FkZXJub18zMDYuMTkuMzJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjMwNi4xOS4zMgpuL04vU3FSTmJLREduMEdmMHF0a0R1V0pOV1h5T0Fnd2RQNGZ1TnozVTFOdVRaajkwWlJ3em1neDg4NERTczRjakttSFZ3Vlk4dmowM2VTTVRWOGFDQT09Cg=="
     }
   }
 }
