@@ -4,6 +4,13 @@
     <title>Kaderno updates</title>
     <item>
       <title>Kaderno 2026.11.2</title>
+      <sparkle:version>306.14.12</sparkle:version>
+      <sparkle:shortVersionString>2026.11.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261102T141200Z-hf.0/Kaderno-20261102T141200Z-hf.0.dmg" length="180904933" type="application/octet-stream" sparkle:edSignature="y9UKjy8AAxPLOYI1tyRvX0vsCtj0FZ9FV42TFoYxluH/y6ISlJRd5jCUN9pXuntg4Wc7AdidYVGPAw4wT/LWDw==" />
+    </item>
+    <item>
+      <title>Kaderno 2026.11.2</title>
       <sparkle:version>306.12.58</sparkle:version>
       <sparkle:shortVersionString>2026.11.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
