@@ -1,8 +1,8 @@
 cask "kaderno" do
-  version "2026.11.8-312.18.29"
-  sha256 "10b3b919b3abb0e6f56411a16c1e4eb9de303b3c3687d0e073eb2db16f383b81"
+  version "2026.11.10-314.21.45"
+  sha256 "5feed8902c69d9132544c32ace1925d2d67842e8379e8187d9c8d63607a711bd"
 
-  url "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261108T182900Z-hf.0/Kaderno-20261108T182900Z-hf.0.dmg"
+  url "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261110T214500Z-hf.0/Kaderno-20261110T214500Z-hf.0.dmg"
   name "Kaderno"
   desc "Local-first notebook with connected memory"
   homepage "https://kaderno.app"
