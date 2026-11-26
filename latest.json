@@ -1,13 +1,13 @@
 {
   "version": "2026.11.26",
-  "build": "330.18.45",
-  "releaseId": "20261126T184500Z-hf.0",
-  "releasedAt": "2026-11-26T18:45:00Z",
+  "build": "330.19.5",
+  "releaseId": "20261126T190500Z-hf.0",
+  "releasedAt": "2026-11-26T19:05:00Z",
   "hotfix": 0,
   "sourceVersion": "da081d78736eb7c0b796d4f5dd543499ece994ce",
   "sourceSha256": "8a865113318935212c46fbf10c59b55123fafef3d82c1c0a20fd6072e518d7cb",
-  "url": "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261126T184500Z-hf.0/Kaderno-20261126T184500Z-hf.0.dmg",
-  "sha256": "960b886f2904ff0559b68260411eaa76179d01f4bd46d0fd0f51639d17203181",
+  "url": "https://github.com/luisfelipesena/homebrew-kaderno/releases/download/20261126T190500Z-hf.0/Kaderno-20261126T190500Z-hf.0.dmg",
+  "sha256": "63c156e825aec58291d8bdf61a7142bfe0b0675825950dd23e79d690a0658554",
   "notarized": true,
   "architecture": "arm64",
   "minimumSystemVersion": "15.0"
